@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bank Statement PDF to CSV, Free &amp; Private</title>
+<meta name="description" content="Convert bank statement PDFs to clean CSV in your browser. Files never leave your computer. Running-balance check included. Built for bookkeepers.">
+<style>
+:root{--bg:#f7f8fa;--card:#fff;--ink:#1b2430;--muted:#5b6675;--line:#e3e7ec;--accent:#1f6feb;--ok:#1a7f37;--bad:#cf222e;--warn:#9a6700}
+@media (prefers-color-scheme:dark){:root{--bg:#0f141a;--card:#161c24;--ink:#e6edf3;--muted:#9aa6b2;--line:#2a333d;--accent:#4c8dff;--ok:#3fb950;--bad:#f85149;--warn:#d29922}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:clamp(26px,4vw,38px);line-height:1.2;margin:8px 0 8px}h2{font-size:20px;margin:32px 0 8px}
+.lead{color:var(--muted);font-size:18px;margin:0 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:32px 16px;text-align:center;cursor:pointer}
+.drop.hover{border-color:var(--accent)}
+button,.btn{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:10px 16px;font-size:15px;cursor:pointer;text-decoration:none;display:inline-block}
+button.secondary{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.muted{color:var(--muted);font-size:14px}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+.tablewrap{overflow-x:auto;margin-top:12px;max-height:420px;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{position:sticky;top:0;background:var(--card)}td.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.flag td{background:color-mix(in srgb,var(--bad) 10%,transparent)}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.pill{display:inline-block;font-size:12px;border:1px solid var(--line);border-radius:999px;padding:2px 10px;color:var(--muted)}
+footer{margin-top:40px;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="pill">Free · No sign-up · Files stay on your computer</span>
+  <h1>Bank statement PDF → clean CSV, in seconds</h1>
+  <p class="lead">For bookkeepers and small practices. Drop a text-based statement PDF and get Date, Description, Amount and Balance columns, plus an automatic running-balance check so you can see if any line was missed.</p>
+
+  <div class="card">
+    <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose a PDF">
+      <strong>Drop a statement PDF here</strong> or click to choose<br>
+      <span class="muted">Processed entirely in your browser. Nothing is uploaded.</span>
+      <input id="file" type="file" accept="application/pdf" hidden>
+    </div>
+    <p id="status" class="muted" aria-live="polite"></p>
+    <div id="result" hidden>
+      <div class="row">
+        <strong id="summary"></strong>
+        <span id="check"></span>
+      </div>
+      <div class="row">
+        <label class="muted">Date format <select id="datefmt"><option value="auto">auto</option><option value="dmy">DD/MM/YYYY</option><option value="mdy">MM/DD/YYYY</option></select></label>
+        <label class="muted"><input type="checkbox" id="split"> Separate Debit / Credit columns</label>
+        <button id="dl">Download CSV</button>
+        <button id="reset" class="secondary">Convert another</button>
+      </div>
+      <div class="tablewrap"><table id="tbl"></table></div>
+      <p class="muted">Rows highlighted in red don't match the running balance. Check them before importing.</p>
+    </div>
+  </div>
+
+  <h2>Is this a problem for your practice?</h2>
+  <p>I'm an independent developer researching how small practices handle <b>bank-statement PDFs</b> and <b>chasing clients for missing documents</b>. If that eats your month-end, I'd love to hear from you. Early users get the full version free during the pilot.</p>
+  <p class="row"><a id="waitlist" class="btn" href="#" target="_blank" rel="noopener">Join the pilot / tell me about your workflow</a></p>
+
+  <h2>How it works</h2>
+  <div class="grid">
+    <div class="card"><b>1. Private by design</b><p class="muted">The PDF is read by your browser with PDF.js. No server, no storage, no account.</p></div>
+    <div class="card"><b>2. Balance check</b><p class="muted">Each row's amount is checked against the running balance, so missed or misread lines stand out.</p></div>
+    <div class="card"><b>3. Any ledger</b><p class="muted">Plain CSV works with Xero, QuickBooks, MYOB, Sage or Excel.</p></div>
+  </div>
+  <p class="muted">Limits: works with text-based PDFs (most bank downloads). Scanned images need OCR, which isn't supported yet. Layouts vary by bank, so always review before import.</p>
+
+  <footer>Built by an independent developer as a research project. Not affiliated with any bank or accounting software. No data is collected by this tool.</footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+const WAITLIST_URL = "#"; // Google Form link goes here
+document.getElementById("waitlist").href = WAITLIST_URL;
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+const $ = id => document.getElementById(id);
+let rows = [], fname = "statement";
+
+const MONTHS = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,sept:9,oct:10,nov:11,dec:12};
+const DATE_RE = /^(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}\s+[A-Za-z]{3,4}\.?(\s+\d{2,4})?|[A-Za-z]{3,4}\.?\s+\d{1,2}(,?\s+\d{4})?)\b/;
+const AMT_RE = /^\(?-?[£$€₹]?\s?\d{1,3}(,\d{3})*(\.\d{2})\)?(\s?(CR|DR|Cr|Dr|-))?$|^\(?-?[£$€₹]?\s?\d+(\.\d{2})\)?(\s?(CR|DR|Cr|Dr|-))?$/;
+
+function parseAmt(s){
+  let neg = /^\(|\)$|^-|-$|DR$|Dr$/.test(s.trim());
+  let v = parseFloat(s.replace(/[^\d.]/g,""));
+  return isNaN(v) ? null : (neg ? -v : v);
+}
+
+async function readLines(buf){
+  const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+  const lines = [];
+  for (let p = 1; p <= pdf.numPages; p++){
+    $("status").textContent = `Reading page ${p} of ${pdf.numPages}…`;
+    const page = await pdf.getPage(p);
+    const tc = await page.getTextContent();
+    const items = tc.items.filter(i => i.str.trim()).map(i => ({s: i.str.trim(), x: i.transform[4], y: Math.round(i.transform[5])}));
+    const byY = [];
+    for (const it of items){
+      let L = byY.find(l => Math.abs(l.y - it.y) <= 2);
+      if (!L){ L = {y: it.y, items: []}; byY.push(L); }
+      L.items.push(it);
+    }
+    byY.sort((a,b) => b.y - a.y).forEach(L => lines.push(L.items.sort((a,b) => a.x - b.x)));
+  }
+  return lines;
+}
+
+const OPEN_RE = /brought forward|opening balance|beginning balance|previous balance|balance forward|start(ing)? balance/i;
+let opening = null;
+
+function toRows(lines){
+  const out = [];
+  opening = null;
+  for (const items of lines){
+    const text = items.map(i => i.s).join(" ");
+    if (OPEN_RE.test(text)){ // opening balance line: not a transaction, but anchors the balance check
+      const last = [...items].reverse().find(i => AMT_RE.test(i.s));
+      if (last && opening == null && !out.length) opening = parseAmt(last.s);
+      continue;
+    }
+    const m = text.match(DATE_RE);
+    // split trailing amount tokens (each text item may hold one amount)
+    const amts = [];
+    let rest = [...items];
+    while (rest.length && AMT_RE.test(rest[rest.length-1].s)){ amts.unshift(rest.pop().s); }
+    if (m && amts.length){
+      let desc = rest.map(i => i.s).join(" ").replace(m[0], "").trim();
+      const vals = amts.map(parseAmt);
+      let amount = null, balance = null;
+      if (vals.length >= 3){ // debit credit balance
+        balance = vals[vals.length-1];
+        const d = vals[vals.length-3], c = vals[vals.length-2];
+        amount = (c || 0) - Math.abs(d || 0);
+      } else if (vals.length === 2){ amount = vals[0]; balance = vals[1]; }
+      else amount = vals[0];
+      out.push({date: m[0], desc, amount, balance, raw: amts});
+    } else if (!m && !amts.length && out.length && text.length < 120 && !/balance|page|statement|total/i.test(text)){
+      out[out.length-1].desc += " " + text; // wrapped description line
+    }
+  }
+  return out;
+}
+
+function fixSigns(rs){
+  // Use running balance to infer the sign when the statement shows debits and credits unsigned in one column.
+  let bad = 0, checked = 0;
+  for (let i = 0; i < rs.length; i++){
+    const prev = i ? rs[i-1].balance : opening, b = rs[i];
+    if (prev == null || b.balance == null || b.amount == null) { b.flag = false; continue; }
+    const diff = +(b.balance - prev).toFixed(2);
+    if (Math.abs(Math.abs(diff) - Math.abs(b.amount)) < 0.005){ b.amount = diff; b.flag = false; }
+    else { b.flag = true; bad++; }
+    checked++;
+  }
+  return {bad, checked};
+}
+
+function normDate(s, fmt){
+  s = s.trim().replace(/\./g," ").replace(/,/g,"");
+  let d, mo, y;
+  let m;
+  if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/))) return s;
+  if ((m = s.match(/^(\d{1,2})[\/\-\s](\d{1,2})[\/\-\s](\d{2,4})$/))){
+    let a = +m[1], b = +m[2]; y = +m[3];
+    if (fmt === "mdy" || (fmt === "auto" && a <= 12 && b > 12)) { mo = a; d = b; } else { d = a; mo = b; }
+  } else if ((m = s.match(/^(\d{1,2})\s+([A-Za-z]{3,4})\s*(\d{2,4})?$/))){ d = +m[1]; mo = MONTHS[m[2].toLowerCase()]; y = m[3] ? +m[3] : null; }
+  else if ((m = s.match(/^([A-Za-z]{3,4})\s+(\d{1,2})\s*(\d{4})?$/))){ mo = MONTHS[m[1].toLowerCase()]; d = +m[2]; y = m[3] ? +m[3] : null; }
+  if (!mo || !d) return s;
+  if (y && y < 100) y += 2000;
+  const pad = n => String(n).padStart(2,"0");
+  return y ? `${y}-${pad(mo)}-${pad(d)}` : `${pad(d)}/${pad(mo)}`;
+}
+
+function guessFmt(){
+  // Look across ALL rows: a first part > 12 means DD/MM, a second part > 12 means MM/DD.
+  for (const r of rows){
+    const m = r.date.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.]/);
+    if (m && +m[1] > 12) return "dmy";
+    if (m && +m[2] > 12) return "mdy";
+  }
+  return "dmy";
+}
+
+function render(){
+  const sel = $("datefmt").value, fmt = sel === "auto" ? guessFmt() : sel, split = $("split").checked;
+  const head = split ? ["Date","Description","Debit","Credit","Balance"] : ["Date","Description","Amount","Balance"];
+  const body = rows.map(r => {
+    const amt = r.amount == null ? "" : r.amount.toFixed(2);
+    const cells = split ? [normDate(r.date, fmt), r.desc, r.amount < 0 ? (-r.amount).toFixed(2) : "", r.amount >= 0 ? amt : "", r.balance == null ? "" : r.balance.toFixed(2)]
+                        : [normDate(r.date, fmt), r.desc, amt, r.balance == null ? "" : r.balance.toFixed(2)];
+    return {cells, flag: r.flag};
+  });
+  const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+  $("tbl").innerHTML = "<thead><tr>" + head.map(h => `<th>${h}</th>`).join("") + "</tr></thead><tbody>" +
+    body.map(b => `<tr class="${b.flag ? "flag" : ""}">` + b.cells.map((c,i) => `<td class="${i>1?"num":""}">${esc(c)}</td>`).join("") + "</tr>").join("") + "</tbody>";
+  return [head, ...body.map(b => b.cells)];
+}
+
+function csv(data){
+  return data.map(r => r.map(c => /[",\n]/.test(c) ? `"${String(c).replace(/"/g,'""')}"` : c).join(",")).join("\r\n");
+}
+
+async function handle(file){
+  if (!file || file.type !== "application/pdf"){ $("status").textContent = "Please choose a PDF file."; return; }
+  fname = file.name.replace(/\.pdf$/i, "");
+  $("result").hidden = true;
+  try {
+    const lines = await readLines(await file.arrayBuffer());
+    if (!lines.length){ $("status").innerHTML = '<span class="bad">No text found. This looks like a scanned PDF (OCR is not supported yet).</span>'; return; }
+    rows = toRows(lines);
+    if (!rows.length){ $("status").innerHTML = '<span class="warn">Couldn\'t find transaction rows in this layout. Layouts vary by bank; this one isn\'t supported yet.</span>'; return; }
+    const {bad, checked} = fixSigns(rows);
+    $("status").textContent = "";
+    $("summary").textContent = `${rows.length} transactions found`;
+    $("check").innerHTML = checked ? (bad ? `<span class="bad">⚠ ${bad} of ${checked} rows don't match the running balance</span>` : `<span class="ok">✓ Running balance checks out (${checked} rows)</span>`)
+                                   : '<span class="warn">No balance column detected, so the balance check was skipped</span>';
+    render();
+    $("result").hidden = false;
+  } catch (e){
+    $("status").innerHTML = `<span class="bad">Couldn't read this PDF: ${e.message}</span>`;
+  }
+}
+
+$("drop").onclick = () => $("file").click();
+$("drop").onkeydown = e => { if (e.key === "Enter" || e.key === " ") $("file").click(); };
+$("file").onchange = e => handle(e.target.files[0]);
+["dragover","dragenter"].forEach(ev => $("drop").addEventListener(ev, e => { e.preventDefault(); $("drop").classList.add("hover"); }));
+["dragleave","drop"].forEach(ev => $("drop").addEventListener(ev, e => { e.preventDefault(); $("drop").classList.remove("hover"); }));
+$("drop").addEventListener("drop", e => handle(e.dataTransfer.files[0]));
+$("datefmt").onchange = render; $("split").onchange = render;
+$("dl").onclick = () => {
+  const blob = new Blob(["﻿" + csv(render())], {type: "text/csv"});
+  const a = Object.assign(document.createElement("a"), {href: URL.createObjectURL(blob), download: fname + ".csv"});
+  a.click(); URL.revokeObjectURL(a.href);
+};
+$("reset").onclick = () => { $("result").hidden = true; $("file").value = ""; $("status").textContent = ""; };
+</script>
+</body>
+</html>
